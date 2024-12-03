@@ -1,0 +1,289 @@
+library(dplyr)
+library(purrr)
+
+
+summarize_variable <- function(data, var_name) {
+  data %>%
+    count(!!sym(var_name), name = "Frequency") %>%
+    mutate(
+      Variable = var_name,
+      Percent = round((Frequency / sum(Frequency)) * 100, 1),
+      `Cumulative Percent` = round(cumsum(Percent), 1)
+    ) %>%
+    rename(Classes = !!sym(var_name)) %>%
+    select(Variable, Classes, Frequency, Percent, `Cumulative Percent`)
+}
+
+df_background <- proj_data[, c(1:6)]
+summary_table <- map_dfr(names(df_background), ~summarize_variable(df_background, .x))
+# View(summary_table)
+
+# write.csv(summary_table, file = 'background.csv')
+
+
+summarize_continuous <- function(data, var_name) {
+  data %>%
+    summarize(
+      Variable = var_name,
+      Mean = round(mean(!!sym(var_name), na.rm = TRUE), 1),
+      Median = median(!!sym(var_name), na.rm = TRUE),
+      SD = round(sd(!!sym(var_name), na.rm = TRUE), 1),
+      Minimum = min(!!sym(var_name), na.rm = TRUE),
+      Maximum = max(!!sym(var_name), na.rm = TRUE),
+      IQR = IQR(!!sym(var_name), na.rm = TRUE)
+    )
+}
+
+summary_table_anx_depre_score <- bind_rows(
+  summarize_continuous(proj_data, "Anxiety_score"),
+  summarize_continuous(proj_data, "Depression_score")
+)
+
+# write.csv(summary_table_anx_depre_score, file = 'summary Anx_Depr Score.csv')
+
+
+df_anx_depre_comparison <- proj_data[, c(5, 6, 54, 55)]
+colnames(df_anx_depre_comparison) <- c('quest_depression', 'quest_anxiety', 
+                                       'anx_class', 'depr_class')
+head(df_anx_depre_comparison)
+
+# Function to perform chi-square test and organize results
+perform_chisq <- function(var1, var2, data) {
+  # Create a contingency table
+  contingency_table <- table(data[[var1]], data[[var2]])
+  
+  # Perform the chi-square test
+  chisq_result <- chisq.test(contingency_table)
+  
+  # Organize results into a summary table
+  summary_table <- data.frame(
+    `Variable Comparison` = paste(var1, "vs", var2),
+    `Test Type` = "chi-square",
+    `Test Statistic` = round(chisq_result$statistic, 2),
+    `Degrees of Freedom` = chisq_result$parameter,
+    `p-value` = round(chisq_result$p.value, 4)
+  )
+  
+  return(summary_table)
+}
+
+# Perform chi-square tests for both anxiety and depression
+anxiety_association <- perform_chisq("anx_class", "quest_anxiety", 
+                                     df_anx_depre_comparison)
+depression_association <- perform_chisq("depr_class", 
+                                        "quest_depression", df_anx_depre_comparison)
+
+# Combine results into a single summary table
+association_summary <- bind_rows(anxiety_association, depression_association)
+
+# write.csv(association_summary, file = 'associations anxiety and depression.csv')
+
+
+
+perform_ttest <- function(var, score_var, data) {
+  t_test_result <- t.test(data[[score_var]] ~ data[[var]])
+  summary_row <- data.frame(
+    `Variable Comparison` = paste(var, "vs", score_var),
+    `Test Type` = "t-test",
+    `Test Statistic` = round(t_test_result$statistic, 2),
+    `Degrees of Freedom` = t_test_result$parameter,
+    `p-value` = round(t_test_result$p.value, 4)
+  )
+  return(summary_row)
+}
+
+# Perform t-tests for gender on anxiety and depression scores
+ttest_anxiety <- perform_ttest("Gender", "Anxiety_score", proj_data)
+ttest_depression <- perform_ttest("Gender", "Depression_score", proj_data)
+
+# Perform chi-square tests for other variables with anxiety and depression levels
+chisq_age_anxiety <- perform_chisq("Age.group", "Anxiety_2_classes", proj_data)
+chisq_age_depression <- perform_chisq("Age.group", "Depression_2_classes", proj_data)
+
+chisq_relationship_anxiety <- perform_chisq("Relationship.status", 
+                                            "Anxiety_2_classes", proj_data)
+chisq_relationship_depression <- perform_chisq("Relationship.status", 
+                                               "Depression_2_classes", proj_data)
+
+chisq_mode_anxiety <- perform_chisq("Mode.of.Entry", 
+                                    "Anxiety_2_classes", proj_data)
+chisq_mode_depression <- perform_chisq("Mode.of.Entry", 
+                                       "Depression_2_classes", proj_data)
+
+# Combine all results into a single summary table
+combined_summary_background_as_determinant <- bind_rows(
+  ttest_anxiety,
+  ttest_depression,
+  chisq_age_anxiety,
+  chisq_age_depression,
+  chisq_relationship_anxiety,
+  chisq_relationship_depression,
+  chisq_mode_anxiety,
+  chisq_mode_depression
+)
+
+# View(combined_summary_background_as_determinant)
+
+# write.csv(combined_summary_background_as_determinant,
+#           file = 'combined_summary_background_as_determinant.csv')
+
+
+# Factors and Determinants of Anxiety and Depression ----------------------
+
+  # Descriptive Analysis
+
+df_factors_background <- proj_data[, c(21:35)]
+factors_summary_table <- 
+  map_dfr(names(df_factors_background), ~summarize_variable(df_factors_background, .x))
+
+# write.csv(factors_summary_table, file = 'factors_summary_table.csv')
+
+
+  # Socioeconomic factors
+
+securing_finance_anxiety <- perform_chisq(
+  "I.feel.capable.of.securing.my.finance.after.my.final.year.of.study",
+  "Anxiety_2_classes", proj_data)
+securing_finance_depression <- perform_chisq(
+  "I.feel.capable.of.securing.my.finance.after.my.final.year.of.study",
+  "Depression_2_classes", proj_data)
+
+finding_employment_anxiety <- perform_chisq(
+  "I.am.confident.about.finding.employment.after.graduation",
+  "Anxiety_2_classes", proj_data)
+finding_employment_depression <- perform_chisq(
+  "I.am.confident.about.finding.employment.after.graduation",
+  "Depression_2_classes", proj_data)
+
+satisfactory_finance_anxiety <- perform_chisq(
+  "I.am.satisfied.with.my.current.financial.situation",
+  "Anxiety_2_classes", proj_data)
+satisfactory_finance_depression <- perform_chisq(
+  "I.am.satisfied.with.my.current.financial.situation",
+  "Depression_2_classes", proj_data)
+
+academic_performance_anxiety <- perform_chisq(
+  "I.do.not.worry.about.my.academic.performance.affecting.my.future.job.prospects",
+  "Anxiety_2_classes", proj_data)
+academic_performance_depression <- perform_chisq(
+  "I.do.not.worry.about.my.academic.performance.affecting.my.future.job.prospects",
+  "Depression_2_classes", proj_data)
+
+socioeconomic_status_anxiety <- perform_chisq(
+  "My.socioeconomic.status.does.not.affect.my.academic.performance",
+  "Anxiety_2_classes", proj_data)
+socioeconomic_status_depressiony <- perform_chisq(
+  "My.socioeconomic.status.does.not.affect.my.academic.performance",
+  "Depression_2_classes", proj_data)
+
+
+socioeconomic_factor_as_determinant <- bind_rows(
+  securing_finance_anxiety,
+  securing_finance_depression,
+  finding_employment_anxiety,
+  finding_employment_depression,
+  satisfactory_finance_anxiety,
+  satisfactory_finance_depression,
+  academic_performance_anxiety,
+  academic_performance_depression,
+  socioeconomic_status_anxiety,
+  socioeconomic_status_depressiony
+)
+
+# write.csv(socioeconomic_factor_as_determinant,
+#           file = 'socioeconomic_factor_as_determinant.csv')
+
+  # Domestic and Emotional Factors
+
+family_support_anxiety <- perform_chisq("I.receive.adequate.social.support.from.my.family",
+  "Anxiety_2_classes", proj_data)
+family_support_depression <- perform_chisq("I.receive.adequate.social.support.from.my.family",
+  "Depression_2_classes", proj_data)
+
+friend_network_anxiety <- perform_chisq("I.have.a.strong.network.of.friends.to.rely.on",
+  "Anxiety_2_classes", proj_data)
+friend_network_depression <- perform_chisq("I.have.a.strong.network.of.friends.to.rely.on",
+  "Depression_2_classes", proj_data)
+
+rarely_lonely_anxiety <- perform_chisq("I.rarely.feel.lonely", "Anxiety_2_classes", proj_data)
+rarely_lonely_depression <- perform_chisq("I.rarely.feel.lonely", "Depression_2_classes", proj_data)
+
+not_bullied_anxiety <- perform_chisq("I.have.not.experienced.bullying.in.my.life",
+  "Anxiety_2_classes", proj_data)
+not_bullied_depression <- perform_chisq("I.have.not.experienced.bullying.in.my.life",
+  "Depression_2_classes", proj_data)
+
+positive_family_anxiety <- perform_chisq("My.family.environment.is.generally.positive",
+  "Anxiety_2_classes", proj_data)
+positive_family_depressiony <- perform_chisq("My.family.environment.is.generally.positive",
+  "Depression_2_classes", proj_data)
+
+domestic_and_emotional_factors_as_determinant <- bind_rows(
+  family_support_anxiety,
+  family_support_depression,
+  friend_network_anxiety,
+  friend_network_depression,
+  rarely_lonely_anxiety,
+  rarely_lonely_depression,
+  not_bullied_anxiety,
+  not_bullied_depression,
+  positive_family_anxiety,
+  positive_family_depressiony
+)
+
+# write.csv(domestic_and_emotional_factors_as_determinant,
+#           file = 'domestic_and_emotional_factors_as_determinant.csv')
+
+  # Attitude and Motivation factors
+
+manageable_study_anxiety <- perform_chisq("I.find.my.area.of.study.manageable",
+                                        "Anxiety_2_classes", proj_data)
+manageable_study_depression <- perform_chisq("I.find.my.area.of.study.manageable",
+                                           "Depression_2_classes", proj_data)
+
+instructor_relationship_anxiety <- perform_chisq("I.have.positive.relationships.with.my.instructors",
+                                        "Anxiety_2_classes", proj_data)
+instructor_relationship_depression <- perform_chisq("I.have.positive.relationships.with.my.instructors",
+                                           "Depression_2_classes", proj_data)
+
+others_evaluation_anxiety <- perform_chisq("I.am.not.concerned.about.others..evaluations.of.me",
+                                       "Anxiety_2_classes", proj_data)
+others_evaluation_depression <- perform_chisq("I.am.not.concerned.about.others..evaluations.of.me",
+                                          "Depression_2_classes", proj_data)
+
+self_esteem_anxiety <- perform_chisq("I.have.high.self.esteem",
+                                     "Anxiety_2_classes", proj_data)
+self_esteem_depression <- perform_chisq("I.have.high.self.esteem",
+                                        "Depression_2_classes", proj_data)
+
+smartphon_internet_anxiety <- perform_chisq("I.limit.my.smartphone.and.internet.use",
+                                         "Anxiety_2_classes", proj_data)
+smartphon_internet_depressiony <- perform_chisq("I.limit.my.smartphone.and.internet.use",
+                                             "Depression_2_classes", proj_data)
+
+attitude_and_motivation_factors_as_determinant <- bind_rows(
+  manageable_study_anxiety,
+  manageable_study_depression,
+  instructor_relationship_anxiety,
+  instructor_relationship_depression,
+  others_evaluation_anxiety,
+  others_evaluation_depression,
+  self_esteem_anxiety,
+  self_esteem_depression,
+  smartphon_internet_anxiety,
+  smartphon_internet_depressiony
+)
+
+
+full_determinant_tests <- bind_rows(
+  combined_summary_background_as_determinant,
+  socioeconomic_factor_as_determinant,
+  domestic_and_emotional_factors_as_determinant,
+  attitude_and_motivation_factors_as_determinant
+)
+
+
+# View(full_determinant_tests)
+
+# write.csv(full_determinant_tests,
+#           file = "full_determinant_tests.csv")
